@@ -132,10 +132,19 @@ public class TestFSTs extends LuceneTestCase {
           pairs.add(new FSTTester.InputOutput<>(term, NO_OUTPUT));
         }
         FSTTester<Object> tester = new FSTTester<>(random(), dir, inputMode, pairs, outputs, false);
-        FST<Object> fst = tester.doTest(0, 0, false);
-        assertNotNull(fst);
-        assertEquals(22, tester.nodeCount);
-        assertEquals(27, tester.arcCount);
+        boolean[] cases={true,false};
+        for(boolean c : cases)
+        {
+            FST<Object> fst = tester.doTest(0, 0, false,c);
+            assertNotNull(fst);
+            assertEquals(22, tester.nodeCount);
+            assertEquals(27, tester.arcCount);
+            if(c&&fst.indexInput()!=null)
+                fst.indexInput().close();
+        }
+
+
+
       }
 
       // FST ord pos int
@@ -146,10 +155,16 @@ public class TestFSTs extends LuceneTestCase {
           pairs.add(new FSTTester.InputOutput<>(terms2[idx], (long) idx));
         }
         FSTTester<Long> tester = new FSTTester<>(random(), dir, inputMode, pairs, outputs, true);
-        final FST<Long> fst = tester.doTest(0, 0, false);
-        assertNotNull(fst);
-        assertEquals(22, tester.nodeCount);
-        assertEquals(27, tester.arcCount);
+        boolean[] cases={true,false};
+        for(boolean c : cases)
+        {
+            final FST<Long> fst = tester.doTest(0, 0, false,c);
+            assertNotNull(fst);
+            assertEquals(22, tester.nodeCount);
+            assertEquals(27, tester.arcCount);
+            if(c&&fst.indexInput()!=null)
+                fst.indexInput().close();
+        }
       }
 
       // FST byte sequence ord
@@ -162,10 +177,16 @@ public class TestFSTs extends LuceneTestCase {
           pairs.add(new FSTTester.InputOutput<>(terms2[idx], output));
         }
         FSTTester<BytesRef> tester = new FSTTester<>(random(), dir, inputMode, pairs, outputs, false);
-        final FST<BytesRef> fst = tester.doTest(0, 0, false);
-        assertNotNull(fst);
-        assertEquals(24, tester.nodeCount);
-        assertEquals(30, tester.arcCount);
+        boolean[] cases={true,false};
+        for(boolean c : cases)
+        {
+            final FST<BytesRef> fst = tester.doTest(0, 0, false);
+            assertNotNull(fst);
+            assertEquals(24, tester.nodeCount);
+            assertEquals(30, tester.arcCount);
+            if(c&&fst.indexInput()!=null)
+                fst.indexInput().close();
+        }
       }
     }
   }
@@ -1200,11 +1221,16 @@ public class TestFSTs extends LuceneTestCase {
     fst.save(out);
     out.close();
 
-    IndexInput in = dir.openInput("fst", IOContext.DEFAULT);
-    final FST<Long> fst2 = new FST<>(in, outputs);
-    checkStopNodes(fst2, outputs);
-    in.close();
+    int[] cases={FST.FST_LOAD_DEFAULT,FST.FST_LOAD_FROM_DISK};
+    for(int c:cases)
+    {
+        IndexInput in = dir.openInput("fst", IOContext.DEFAULT);
+        final FST<Long> fst2 = new FST<>(in, outputs,c);
+        checkStopNodes(fst2, outputs);
+        in.close();
+    }
     dir.close();
+
   }
 
   private void checkStopNodes(FST<Long> fst, PositiveIntOutputs outputs) throws Exception {

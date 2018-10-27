@@ -56,7 +56,6 @@ import org.apache.lucene.util.graph.GraphTokenStreamFiniteStrings;
 public class QueryBuilder {
   protected Analyzer analyzer;
   protected boolean enablePositionIncrements = true;
-  protected boolean enableGraphQueries = true;
   
   /** Creates a new QueryBuilder using the given analyzer. */
   public QueryBuilder(Analyzer analyzer) {
@@ -239,20 +238,6 @@ public class QueryBuilder {
     }
   }
 
-  /** Enable or disable graph TokenStream processing (enabled by default).
-   *
-   * @lucene.experimental */
-  public void setEnableGraphQueries(boolean v) {
-    enableGraphQueries = v;
-  }
-
-  /** Returns true if graph TokenStream processing is enabled (default).
-   *
-   * @lucene.experimental */
-  public boolean getEnableGraphQueries() {
-    return enableGraphQueries;
-  }
-
   /**
    * Creates a query from a token stream.
    *
@@ -295,7 +280,7 @@ public class QueryBuilder {
         }
 
         int positionLength = posLenAtt.getPositionLength();
-        if (enableGraphQueries && positionLength > 1) {
+        if (!isGraph && positionLength > 1) {
           isGraph = true;
         }
       }

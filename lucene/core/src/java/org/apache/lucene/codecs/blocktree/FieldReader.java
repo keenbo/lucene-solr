@@ -61,10 +61,16 @@ public final class FieldReader extends Terms implements Accountable {
   final BlockTreeTermsReader parent;
 
   final FST<BytesRef> index;
-  //private boolean DEBUG;
+  //private boolean DEBUG;c
 
   FieldReader(BlockTreeTermsReader parent, FieldInfo fieldInfo, long numTerms, BytesRef rootCode, long sumTotalTermFreq, long sumDocFreq, int docCount,
-              long indexStartFP, int longsSize, IndexInput indexIn, BytesRef minTerm, BytesRef maxTerm) throws IOException {
+          long indexStartFP, int longsSize, IndexInput indexIn, BytesRef minTerm, BytesRef maxTerm) throws IOException {
+     this(parent,fieldInfo,numTerms,rootCode,sumTotalTermFreq,sumDocFreq,docCount,
+             indexStartFP, longsSize,indexIn,minTerm, maxTerm, FST.FST_LOAD_DEFAULT);
+  }
+  
+  FieldReader(BlockTreeTermsReader parent, FieldInfo fieldInfo, long numTerms, BytesRef rootCode, long sumTotalTermFreq, long sumDocFreq, int docCount,
+              long indexStartFP, int longsSize, IndexInput indexIn, BytesRef minTerm, BytesRef maxTerm,int fstLoadMode) throws IOException {
     assert numTerms > 0;
     this.fieldInfo = fieldInfo;
     //DEBUG = BlockTreeTermsReader.DEBUG && fieldInfo.name.equals("id");
@@ -88,7 +94,7 @@ public final class FieldReader extends Terms implements Accountable {
       final IndexInput clone = indexIn.clone();
       //System.out.println("start=" + indexStartFP + " field=" + fieldInfo.name);
       clone.seek(indexStartFP);
-      index = new FST<>(clone, ByteSequenceOutputs.getSingleton());
+      index = new FST<>(clone, ByteSequenceOutputs.getSingleton(),fstLoadMode);
         
       /*
         if (false) {

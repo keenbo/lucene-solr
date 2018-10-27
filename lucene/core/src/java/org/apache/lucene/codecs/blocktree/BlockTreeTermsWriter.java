@@ -194,12 +194,12 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
   /** Suggested default value for the {@code
    *  minItemsInBlock} parameter to {@link
    *  #BlockTreeTermsWriter(SegmentWriteState,PostingsWriterBase,int,int)}. */
-  public final static int DEFAULT_MIN_BLOCK_SIZE = 25;
+  public final static int DEFAULT_MIN_BLOCK_SIZE = 100;// 2017-05 change: 25->100
 
   /** Suggested default value for the {@code
    *  maxItemsInBlock} parameter to {@link
    *  #BlockTreeTermsWriter(SegmentWriteState,PostingsWriterBase,int,int)}. */
-  public final static int DEFAULT_MAX_BLOCK_SIZE = 48;
+  public final static int DEFAULT_MAX_BLOCK_SIZE = 200;// 2017-05 change: 48->192
 
   //public static boolean DEBUG = false;
   //public static boolean DEBUG2 = false;

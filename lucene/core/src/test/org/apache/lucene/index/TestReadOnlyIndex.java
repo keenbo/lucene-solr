@@ -46,7 +46,7 @@ public class TestReadOnlyIndex extends LuceneTestCase {
 
   @BeforeClass
   public static void buildIndex() throws Exception {
-    indexPath = Files.createTempDirectory("readonlyindex").toAbsolutePath();
+    indexPath = Files.createTempDirectory("readonlyindex");
     
     // borrows from TestDemo, but not important to keep in sync with demo
     Analyzer analyzer = new MockAnalyzer(random());

@@ -45,6 +45,7 @@ import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.store.IndexInput;
 
 // TODO: break this into WritableFST and ReadOnlyFST.. then
 // we can have subclasses of ReadOnlyFST to handle the
@@ -68,6 +69,9 @@ import org.apache.lucene.util.packed.PackedInts;
  *      documentation} for some simple examples.
  *
  * @lucene.experimental
+ */
+/*
+ * 2017-05-21 : add to support unload tip into memory
  */
 public final class FST<T> implements Accountable {
 
@@ -281,6 +285,15 @@ public final class FST<T> implements Accountable {
   private GrowableWriter inCounts;
 
   private final int version;
+  
+  // 
+  public static int FST_LOAD_DEFAULT = 1;   
+  public static int FST_LOAD_FROM_DISK = 1 << 1;
+  public static int FST_LOAD_FROM_DISK_WITH_CACHE = 1 << 2;
+  private int fstLoadMode = FST_LOAD_DEFAULT;
+  private IndexInput indexInput; // not null if fstLoadMode != FST_LOAD_DEFAULT
+  private long arcsBaseFilePointerAtIndexInput; // record start offset of fst content in this file
+  private long arcsNumBytes;
 
   // make a new empty FST, for building; Builder invokes
   // this ctor
@@ -308,15 +321,24 @@ public final class FST<T> implements Accountable {
 
   public static final int DEFAULT_MAX_BLOCK_BITS = Constants.JRE_IS_64BIT ? 30 : 28;
 
-  /** Load a previously saved FST. */
+  /** Load a previously saved FST. */ // xibao: in lucene,DataInput in may be instance of IndexInput
   public FST(DataInput in, Outputs<T> outputs) throws IOException {
-    this(in, outputs, DEFAULT_MAX_BLOCK_BITS);
+          this(in, outputs, DEFAULT_MAX_BLOCK_BITS,
+                  FST_LOAD_DEFAULT);
+                  //in instanceof IndexInput ? FST_LOAD_FROM_DISK:FST_LOAD_DEFAULT);
   }
 
+  /** Load a previously saved FST. */ // in lucene internal,DataInput in may be instance of IndexInput
+  public FST(DataInput in, Outputs<T> outputs,int fstLoadMode) throws IOException {
+    this(in, outputs, DEFAULT_MAX_BLOCK_BITS,fstLoadMode);
+  }
+  
   /** Load a previously saved FST; maxBlockBits allows you to
    *  control the size of the byte[] pages used to hold the FST bytes. */
-  public FST(DataInput in, Outputs<T> outputs, int maxBlockBits) throws IOException {
+  public FST(DataInput in, Outputs<T> outputs, int maxBlockBits,int fstLoadMode) throws IOException {
     this.outputs = outputs;
+    assert checkFstLoadMode(fstLoadMode) == true;
+    this.fstLoadMode = fstLoadMode;
 
     if (maxBlockBits < 1 || maxBlockBits > 30) {
       throw new IllegalArgumentException("maxBlockBits should be 1 .. 30; got " + maxBlockBits);
@@ -377,20 +399,45 @@ public final class FST<T> implements Accountable {
     }
 
     long numBytes = in.readVLong();
-    if (numBytes > 1 << maxBlockBits) {
-      // FST is big: we need multiple pages
-      bytes = new BytesStore(in, numBytes, 1<<maxBlockBits);
-      bytesArray = null;
-    } else {
-      // FST fits into a single block: use ByteArrayBytesStoreReader for less overhead
-      bytes = null;
-      bytesArray = new byte[(int) numBytes];
-      in.readBytes(bytesArray, 0, bytesArray.length);
+    this.arcsNumBytes = numBytes;
+    if(this.fstLoadMode == FST_LOAD_DEFAULT)
+    {
+        if (numBytes > 1 << maxBlockBits) {
+          // FST is big: we need multiple pages
+          bytes = new BytesStore(in, numBytes, 1<<maxBlockBits);
+          bytesArray = null;
+        } else {
+          // FST fits into a single block: use ByteArrayBytesStoreReader for less overhead
+          bytes = null;
+          bytesArray = new byte[(int) numBytes];
+          in.readBytes(bytesArray, 0, bytesArray.length);
+        }
+    }
+    else
+    {
+        // only support FST_LOAD_FROM_DISK now.
+        bytes = null;
+        bytesArray = null;
+        assert in instanceof IndexInput == true;
+        this.indexInput = (IndexInput) in;
+        this.arcsBaseFilePointerAtIndexInput = indexInput.getFilePointer();
     }
     
     cacheRootArcs();
   }
 
+  public IndexInput indexInput()
+  {
+      return this.indexInput;
+  }
+
+  private boolean checkFstLoadMode(int fstLoadMode)
+  {
+      return fstLoadMode == FST_LOAD_DEFAULT ||
+              fstLoadMode == FST_LOAD_FROM_DISK ||
+              fstLoadMode == FST_LOAD_FROM_DISK_WITH_CACHE;
+  }
+  
   public INPUT_TYPE getInputType() {
     return inputType;
   }
@@ -420,10 +467,14 @@ public final class FST<T> implements Accountable {
   public long ramBytesUsed() {
     long size = BASE_RAM_BYTES_USED;
     if (bytesArray != null) {
-      size += bytesArray.length;
+        size += bytesArray.length;
+    } else if(bytes != null) {
+        size += bytes.ramBytesUsed();
     } else {
-      size += bytes.ramBytesUsed();
+        if(null != this.indexInput)
+            size += RamUsageEstimator.shallowSizeOf(this.indexInput);
     }
+    
     if (packed) {
       size += nodeRefToAddress.ramBytesUsed();
     } else if (nodeAddress != null) {
@@ -1340,19 +1391,40 @@ public final class FST<T> implements Accountable {
   /** Returns a {@link BytesReader} for this FST, positioned at
    *  position 0. */
   public BytesReader getBytesReader() {
+    
+    // add new bytes reader to support read from disk!
     if (packed) {
-      if (bytesArray != null) {
-        return new ForwardBytesReader(bytesArray);
-      } else {
-        return bytes.getForwardReader();
-      }
+        if( fstLoadMode == FST_LOAD_DEFAULT)
+        {
+            if (bytesArray != null) {
+                return new ForwardBytesReader(bytesArray);
+            } else {
+                return bytes.getForwardReader();
+            }
+        }
+        else
+        {
+            return new DiskForwardReader(this.indexInput.clone(),this.arcsBaseFilePointerAtIndexInput,
+                            this.arcsNumBytes);
+        }
+
     } else {
-      if (bytesArray != null) {
-        return new ReverseBytesReader(bytesArray);
-      } else {
-        return bytes.getReverseReader();
-      }
+        if( fstLoadMode == FST_LOAD_DEFAULT)
+        {
+          if (bytesArray != null) {
+            return new ReverseBytesReader(bytesArray);
+          } else {
+            return bytes.getReverseReader();
+          }
+        }
+        else
+        {
+            return new DiskReverseReader(this.indexInput.clone(),this.arcsBaseFilePointerAtIndexInput,
+                            this.arcsNumBytes);
+        }
+
     }
+    
   }
 
   /** Reads bytes stored in an FST. */

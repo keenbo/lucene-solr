@@ -42,6 +42,7 @@ import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
+import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Outputs;
 
 /** A block-based terms index and dictionary that assigns
@@ -139,11 +140,13 @@ public final class BlockTreeTermsReader extends FieldsProducer {
   final int version;
 
   final boolean anyAutoPrefixTerms;
+  
+  private IndexInput indexIn = null;
 
   /** Sole constructor. */
   public BlockTreeTermsReader(PostingsReaderBase postingsReader, SegmentReadState state) throws IOException {
     boolean success = false;
-    IndexInput indexIn = null;
+    //IndexInput indexIn = null;
     
     this.postingsReader = postingsReader;
     this.segment = state.segmentInfo.name;
@@ -233,18 +236,20 @@ public final class BlockTreeTermsReader extends FieldsProducer {
         final long indexStartFP = indexIn.readVLong();
         FieldReader previous = fields.put(fieldInfo.name,       
                                           new FieldReader(this, fieldInfo, numTerms, rootCode, sumTotalTermFreq, sumDocFreq, docCount,
-                                                          indexStartFP, longsSize, indexIn, minTerm, maxTerm));
+                                                          indexStartFP, longsSize, indexIn, minTerm, maxTerm,FST.FST_LOAD_DEFAULT));
         if (previous != null) {
           throw new CorruptIndexException("duplicate field: " + fieldInfo.name, termsIn);
         }
       }
       
-      indexIn.close();
+      //indexIn.close();
       success = true;
     } finally {
       if (!success) {
         // this.close() will close in:
-        IOUtils.closeWhileHandlingException(indexIn, this);
+        //IOUtils.closeWhileHandlingException(indexIn, this);
+        IOUtils.closeWhileHandlingException(this);
+
       }
     }
   }
@@ -273,7 +278,7 @@ public final class BlockTreeTermsReader extends FieldsProducer {
   @Override
   public void close() throws IOException {
     try {
-      IOUtils.close(termsIn, postingsReader);
+      IOUtils.close(indexIn,termsIn, postingsReader);
     } finally { 
       // Clear so refs to terms index is GCable even if
       // app hangs onto us:
